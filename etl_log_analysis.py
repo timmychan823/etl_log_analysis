@@ -167,7 +167,8 @@ fig.update_layout(plot_bgcolor='lightgray')
 fig.update_layout(xaxis_title='X Axis Label', yaxis_title='Y Axis Label', title_text='Custom Title')
 '''
 
-app = Dash()
+app = Dash(__name__)
+server = app.server
 
 app.layout = html.Div([
     html.H1('ETL Time Trend Analysis'),
