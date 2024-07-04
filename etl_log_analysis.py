@@ -197,4 +197,4 @@ def plot_data(context,task):
 
 
 
-app.run_server(debug=True,host='0.0.0.0', ssl_context = 'adhoc')
+app.run_server(debug=False,host='0.0.0.0',port=8050 ,ssl_context = 'adhoc')
