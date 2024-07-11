@@ -6,18 +6,23 @@ import re
 from dash import Dash, html, dcc, Input, Output, callback
 import plotly.express as px
 import dash_bootstrap_components as dbc
-
+import os
 
 
 
 figure_no = 0
 
-df_2022 = pd.read_excel("etl_log(20240619)-2 (2022).xlsx",sheet_name = "Export Worksheet",header = 0)
-df_2023 = pd.read_excel("etl_log(20240619)-2 (2023).xlsx",sheet_name = "Export Worksheet",header = 0)
+match_etl_log_files = [f for f in os.listdir(".") if re.search("^etl_log.*xlsx$",f)]
+raw_dataframes = []
+number_of_records_so_far = 0
+for i in range(len(match_etl_log_files)):
+    raw_dataframes.append(pd.read_excel(match_etl_log_files[i],sheet_name = "Export Worksheet",header = 0))
+    if i != 0:
+        raw_dataframes[i].set_index(pd.Series([i for i in range(number_of_records_so_far,number_of_records_so_far+len(raw_dataframes[i]))]), inplace=True)
+    number_of_records_so_far+=len(raw_dataframes[i])
 
-df_2023.set_index(pd.Series([i for i in range(len(df_2022),len(df_2022)+len(df_2023))]), inplace=True)
 
-df_2022 = pd.concat([df_2022,df_2023],axis=0)
+df_2022 = pd.concat(raw_dataframes,axis=0)
 
 
 df_2022_HKMA = df_2022[(df_2022["CONTEXT"]=="HKMA")].reset_index() #add condition to filter out non-required hours (see if it can detect the datetime)
@@ -96,31 +101,31 @@ df_2022_HKMA["ETL_DATE"]= pd.to_datetime(df_2022_HKMA["ETL_DATE"], format='%d-%b
 df_2022_HKMA_PR["ETL_DATE"]= pd.to_datetime(df_2022_HKMA_PR["ETL_DATE"], format='%d-%b-%y %H.%M.%S')
 
 
+
 #turn to xxx_1, xxx_2, ...
 
 
-def condition(x):
-    return x+"_2"
-def condition2(x):
-    return x+"_3"
-def condition3(x):
-    return x+"_4"
+def condition(x,i):
+    return x+f"_{i+1}"
 
-df_2022_HKMA.groupby(["ETL_DATE", "ETL_TASK"]).nth(0)["ETL_TASK"]
-one = pd.DataFrame(df_2022_HKMA.groupby(["ETL_DATE", "ETL_TASK"]).nth(1)["ETL_TASK"].apply(condition),columns = ["ETL_TASK"])
-two = pd.DataFrame(df_2022_HKMA.groupby(["ETL_DATE", "ETL_TASK"]).nth(2)["ETL_TASK"].apply(condition2),columns = ["ETL_TASK"])
-three = pd.DataFrame(df_2022_HKMA.groupby(["ETL_DATE", "ETL_TASK"]).nth(3)["ETL_TASK"].apply(condition3),columns = ["ETL_TASK"])
-df_2022_HKMA.update(one)
-df_2022_HKMA.update(two)
-df_2022_HKMA.update(three)
+nth_task_of_the_same_kind_HKMA = []
+#turn to xxx_1, xxx_2, ...
+for i in range(df_2022_HKMA.groupby(["ETL_DATE", "ETL_TASK"]).count().max().max()):
+    if i !=0:
+        nth_task_of_the_same_kind_HKMA.append(pd.DataFrame(df_2022_HKMA.groupby(["ETL_DATE", "ETL_TASK"]).nth(i)["ETL_TASK"].apply(lambda x: condition(x,i)),columns = ["ETL_TASK"]))
 
-df_2022_HKMA_PR.groupby(["ETL_DATE", "ETL_TASK"]).nth(0)["ETL_TASK"]
-one = pd.DataFrame(df_2022_HKMA_PR.groupby(["ETL_DATE", "ETL_TASK"]).nth(1)["ETL_TASK"].apply(condition),columns = ["ETL_TASK"])
-two = pd.DataFrame(df_2022_HKMA_PR.groupby(["ETL_DATE", "ETL_TASK"]).nth(2)["ETL_TASK"].apply(condition2),columns = ["ETL_TASK"])
-three = pd.DataFrame(df_2022_HKMA_PR.groupby(["ETL_DATE", "ETL_TASK"]).nth(3)["ETL_TASK"].apply(condition3),columns = ["ETL_TASK"])
-df_2022_HKMA_PR.update(one)
-df_2022_HKMA_PR.update(two)
-df_2022_HKMA_PR.update(three)
+for i in range(len(nth_task_of_the_same_kind_HKMA)):
+    df_2022_HKMA.update(nth_task_of_the_same_kind_HKMA[i])
+
+#pd.DataFrame(df_2022_HKMA.groupby(["ETL_DATE", "ETL_TASK"]).nth(1)["ETL_TASK"].apply(condition),columns = ["ETL_TASK"])
+
+nth_task_of_the_same_kind_HKMA_PR = []
+for i in range(df_2022_HKMA_PR.groupby(["ETL_DATE", "ETL_TASK"]).count().max().max()):
+    if i !=0:
+        nth_task_of_the_same_kind_HKMA_PR.append(pd.DataFrame(df_2022_HKMA_PR.groupby(["ETL_DATE", "ETL_TASK"]).nth(i)["ETL_TASK"].apply(lambda x: condition(x,i)),columns = ["ETL_TASK"]))
+
+for i in range(len(nth_task_of_the_same_kind_HKMA_PR)):
+    df_2022_HKMA_PR.update(nth_task_of_the_same_kind_HKMA_PR[i])
 
 
 final_df = pd.DataFrame(columns=['ETL_DATE', 'DURATION', 'CONTEXT','ETL_TASK'])
@@ -168,10 +173,9 @@ fig.update_layout(xaxis_title='X Axis Label', yaxis_title='Y Axis Label', title_
 '''
 
 app = Dash(__name__)
-server = app.server
 
 app.layout = html.Div([
-    html.H1('ETL Time Trend Analysis'),
+    html.H1('ETL Execution Time Analysis'),
     dbc.Row([dbc.Col(dcc.Dropdown(options = sorted(final_df["CONTEXT"].unique()), value = 'HKMA', id='context-dropdown')),dcc.Dropdown(options = sorted(final_df["ETL_TASK"].unique()), value = 'TOTAL_DURATION', id='task-dropdown')]), #not side by side but I think it is fine
     dbc.Row([dcc.Graph(id='overview_graph', figure={}, style ={'width':'45vw', 'height':'45vw', 'display': 'inline-block'}),dcc.Graph(id='task_graph', figure={}, style ={'width':'45vw', 'height':'45vw','display': 'inline-block'})])
 ])
@@ -197,4 +201,4 @@ def plot_data(context,task):
 
 
 
-app.run_server(debug=False,host='0.0.0.0', ssl_context = 'adhoc')
+app.run_server(debug=True,host='0.0.0.0', ssl_context = 'adhoc')
